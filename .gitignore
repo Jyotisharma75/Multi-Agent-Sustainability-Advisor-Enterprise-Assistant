@@ -1,15 +1,67 @@
+# Virtual environments
 .venv/
+venv/
+env/
+ENV/
+
+# Python bytecode and build output
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
 *.egg-info/
+*.egg
 build/
 dist/
+wheels/
+.eggs/
+pip-wheel-metadata/
+
+# Tool caches
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+.dmypy.json
+.hypothesis/
+.tox/
+.nox/
+.cache/
+
+# Coverage and test reports
 .coverage
+.coverage.*
 coverage.xml
 htmlcov/
+*.cover
+junit*.xml
+
+# Local runtime data (SQLite databases, logs)
 var/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Secrets and local environment
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Hugging Face and model caches
 .hf/
+hf_cache/
+models/
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter
+.ipynb_checkpoints/
