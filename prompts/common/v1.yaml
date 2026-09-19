@@ -1,0 +1,13 @@
+json_repair: |
+  Your previous reply could not be used: $error
+  Reply again with only one JSON object that matches the requested schema. No prose, no code fences.
+blocked_message: |
+  I can't process this request. It was stopped by the assistant's input safety checks. Please rephrase your question about sustainability data, documents or analysis.
+orchestration_failed: |
+  I couldn't plan an analysis for this request because a required service is unavailable. Please try again shortly.
+low_confidence_notice: |
+  Confidence in this answer is below the approved threshold. Treat it as indicative and verify the underlying evidence before acting on it.
+analyze_default_question: |
+  Provide a complete sustainability analysis for facilities $facilities from $start to $end, covering KPIs against targets, trends, anomalies, the emissions outlook, recommended actions and relevant compliance obligations.
+scenario_default_question: |
+  What happens to emissions at $facility if we apply these levers: $levers?

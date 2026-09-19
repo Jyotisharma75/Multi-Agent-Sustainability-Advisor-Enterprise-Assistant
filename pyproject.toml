@@ -1,0 +1,125 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sustainability-advisor"
+version = "1.0.0"
+description = "Multi-agent sustainability advisor for enterprise emissions, energy and compliance analysis."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "sqlalchemy>=2.0.35",
+    "sqlglot>=26",
+    "langgraph>=0.2.60",
+    "openai>=1.50",
+    "azure-identity>=1.17",
+    "azure-search-documents>=11.5",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "statsmodels>=0.14.2",
+    "scikit-learn>=1.5",
+    "structlog>=24.4",
+    "tenacity>=9.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+azure = ["pyodbc>=5.1"]
+local = [
+    "torch>=2.4",
+    "transformers>=4.45",
+    "accelerate>=0.34",
+    "sentence-transformers>=3.0",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-PyYAML",
+    "pandas-stubs",
+    "pre-commit>=3.8",
+]
+
+[project.scripts]
+sa-seed = "sustainability_advisor.devdata.seed:main"
+sa-ingest = "sustainability_advisor.retrieval.ingest:main"
+sa-evaluate = "sustainability_advisor.evaluation.harness:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sustainability_advisor"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "N", "S", "A", "RET", "SIM", "PTH", "RUF", "ASYNC"]
+ignore = ["S101", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "PTH", "N802"]
+"scripts/**" = ["S603", "T201"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["sustainability_advisor"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+packages = ["sustainability_advisor"]
+
+[[tool.mypy.overrides]]
+module = [
+    "sklearn.*",
+    "statsmodels.*",
+    "transformers.*",
+    "torch.*",
+    "sentence_transformers.*",
+    "pyodbc",
+    "azure.search.*",
+    "azure.identity.*",
+    "langgraph.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "--strict-markers -ra"
+markers = [
+    "unit: fast isolated tests",
+    "graph: orchestration graph tests",
+    "security: guardrail and SQL safety tests",
+    "retrieval: retrieval and citation tests",
+    "api: HTTP API tests",
+    "evaluation: golden set evaluation tests",
+    "local_model: requires the local Hugging Face model",
+    "live_azure: requires live Azure resources",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:statsmodels.*",
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["sustainability_advisor"]
+omit = ["*/llm/huggingface_local.py", "*/llm/azure_openai.py", "*/retrieval/azure_search.py"]

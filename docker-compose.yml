@@ -1,0 +1,27 @@
+# Local stack: the API with the development configuration (SQLite, in process
+# index, local Hugging Face models). Azure OpenAI is used when the variables
+# in .env provide an endpoint.
+services:
+  advisor:
+    build:
+      context: .
+      args:
+        BAKE_LOCAL_MODEL: "true"
+    image: sustainability-advisor:local
+    env_file: .env
+    environment:
+      SA_ENV: development
+      HF_HUB_OFFLINE: "0"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data:ro
+      - advisor-var:/app/var
+      - hf-cache:/app/.hf
+    command: >
+      sh -c "sa-seed --spec data/seed/dev_seed.yaml &&
+             uvicorn sustainability_advisor.main:create_app --factory --host 0.0.0.0 --port 8000"
+
+volumes:
+  advisor-var:
+  hf-cache:

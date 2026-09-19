@@ -1,0 +1,44 @@
+# Automated tests: SQLite in a temporary folder (path overridden by the test
+# fixtures), in process index with hash embeddings, scripted mock language
+# models injected by the fixtures. No network access and no model downloads.
+app:
+  environment: test
+
+api:
+  auth:
+    enabled: true
+    api_keys_env: SA_TEST_API_KEYS
+
+logging:
+  level: WARNING
+  json_output: true
+
+database:
+  backend: sqlite
+  schema_name: null
+  query_timeout_seconds: 10
+  sqlite:
+    path: var/test.db
+    create_schema: true
+
+llm:
+  agent_provider_order: [azure_openai, local]
+  azure_openai:
+    enabled: false
+  local:
+    enabled: false
+  mock:
+    enabled: true
+
+retrieval:
+  backend: memory
+  auto_ingest_on_start: true
+  min_retrieval_score: 0.2
+  embeddings:
+    provider: hash
+    model: feature-hash-v1
+    dimensions: 512
+    batch_size: 64
+
+orchestration:
+  max_parallel_agents: 4

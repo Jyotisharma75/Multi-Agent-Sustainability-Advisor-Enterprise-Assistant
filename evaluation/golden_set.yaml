@@ -1,0 +1,57 @@
+# Golden set for offline evaluation (sa-evaluate) and the evaluation tests.
+# Questions refer to the synthetic development data and documents.
+retrieval_k: 3
+
+thresholds:
+  intent_accuracy: 0.85
+  retrieval_hit_rate: 0.85
+  retrieval_mrr: 0.7
+  grounded_rate: 1.0
+  citation_coverage: 1.0
+  evidence_integrity: 1.0
+  end_to_end_intent_accuracy: 0.8
+
+intent_cases:
+  - {question: "How many facilities do we operate in each region?", intent: data_query}
+  - {question: "List the top 3 facilities by total emissions", intent: data_query}
+  - {question: "Is FAC-001 on track against its emissions intensity target?", intent: kpi_analysis}
+  - {question: "How is our renewable share progressing at Monterrey?", intent: kpi_analysis}
+  - {question: "Investigate the unusual spike in energy at FAC-002", intent: anomaly_investigation}
+  - {question: "Were there any anomalies or outliers in emissions last year?", intent: anomaly_investigation}
+  - {question: "Forecast emissions for Pune for the next 6 months", intent: emissions_forecast}
+  - {question: "What is the emissions outlook, will we meet the target?", intent: emissions_forecast}
+  - {question: "What if we cut energy use by 10 percent at Rotterdam?", intent: scenario_analysis}
+  - {question: "Simulate a scenario with 60 percent renewable electricity", intent: scenario_analysis}
+  - {question: "What are our CSRD ESRS E1 disclosure obligations?", intent: compliance_question}
+  - {question: "Which permit conditions apply to the boiler house?", intent: compliance_question}
+  - {question: "According to the energy policy, how often must compressed air be leak surveyed?", intent: document_question}
+  - {question: "What did the energy audit find at the Monterrey site?", intent: document_question}
+
+retrieval_cases:
+  - {query: "investigate deviation of monthly fuel use boiler", document_id: DOC-PERMIT-FAC001}
+  - {query: "annual environmental report competent authority deadline", document_id: DOC-PERMIT-FAC001}
+  - {query: "disclose gross scope 1 scope 2 scope 3 emissions", document_id: DOC-ESRS-E1-2024}
+  - {query: "transition plan reduction targets for 2030", document_id: DOC-ESRS-E1-2024}
+  - {query: "compressed air leak survey frequency", document_id: DOC-POL-ENERGY-003}
+  - {query: "energy attribute certificates interim measure", document_id: DOC-POL-ENERGY-003}
+  - {query: "paint shop ovens weekend standby", document_id: DOC-AUDIT-FAC002-2024}
+  - {query: "market based method contractual instruments guarantees of origin", document_id: DOC-GHG-SCOPE2-METHOD}
+
+end_to_end_cases:
+  - question: "Is FAC-001 on track against its emissions intensity and renewable share targets?"
+    intent: kpi_analysis
+    agents: [data_analyst, sustainability_analyst, recommendation]
+  - question: "Investigate unusual spikes in emissions at FAC-001"
+    intent: anomaly_investigation
+    agents: [anomaly_detection, recommendation]
+  - question: "Forecast emissions for FAC-002 for the next 6 months"
+    intent: emissions_forecast
+    agents: [forecasting]
+  - question: "What are our ESRS E1 disclosure obligations for scope 2?"
+    intent: compliance_question
+    agents: [compliance_knowledge]
+    requires_citations: true
+  - question: "According to the energy policy, how should anomalies in energy be handled?"
+    intent: document_question
+    agents: [document_intelligence]
+    requires_citations: true

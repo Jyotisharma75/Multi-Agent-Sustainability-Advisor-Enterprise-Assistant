@@ -1,0 +1,46 @@
+# Production: Azure SQL with Entra authentication, Azure AI Search with
+# Azure OpenAI embeddings and the semantic ranker, Azure OpenAI with Entra
+# authentication, local Hugging Face coder model preloaded for routed SQL
+# generation and verification. Secrets come from Key Vault backed
+# environment variables; nothing here is secret.
+app:
+  environment: production
+
+api:
+  cors_origins: []
+  request_timeout_seconds: 150
+  auth:
+    enabled: true
+
+logging:
+  level: INFO
+  json_output: true
+
+database:
+  backend: azure_sql
+  schema_name: dbo
+  azure_sql:
+    auth_mode: entra
+    pool_size: 20
+    max_overflow: 10
+
+llm:
+  azure_openai:
+    auth_mode: entra
+  local:
+    preload: true
+    num_threads: 4
+
+retrieval:
+  backend: azure_search
+  auto_ingest_on_start: false
+  azure_search:
+    auth_mode: entra
+    use_semantic_ranker: true
+  embeddings:
+    provider: azure_openai
+    model: text-embedding-3-large
+    dimensions: 1536
+
+guardrails:
+  min_final_confidence: 0.6

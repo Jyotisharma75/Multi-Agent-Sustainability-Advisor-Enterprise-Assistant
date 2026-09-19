@@ -1,0 +1,75 @@
+name: cd
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  IMAGE: ${{ vars.ACR_LOGIN_SERVER }}/sustainability-advisor
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC, no stored secrets)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push image
+        run: |
+          az acr login --name "${{ vars.ACR_NAME }}"
+          docker build --build-arg BAKE_LOCAL_MODEL=true -t "$IMAGE:${{ github.sha }}" .
+          docker push "$IMAGE:${{ github.sha }}"
+
+      - name: Apply database migrations
+        run: |
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /usr/share/keyrings/microsoft.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update && sudo ACCEPT_EULA=Y apt-get install -y sqlcmd
+          for file in migrations/*.sql; do
+            sqlcmd --authentication-method ActiveDirectoryDefault \
+              -S "${{ vars.AZURE_SQL_SERVER }}" -d "${{ vars.AZURE_SQL_DATABASE }}" \
+              -v APP_IDENTITY="${{ vars.APP_IDENTITY }}" QUERY_IDENTITY="${{ vars.QUERY_IDENTITY }}" \
+              -b -i "$file"
+          done
+
+      - name: Index documents
+        run: |
+          pip install -e ".[azure]"
+          SA_ENV=production sa-ingest --folder "${{ vars.DOCUMENTS_PATH || 'data/documents' }}"
+        env:
+          AZURE_SQL_SERVER: ${{ vars.AZURE_SQL_SERVER }}
+          AZURE_SQL_DATABASE: ${{ vars.AZURE_SQL_DATABASE }}
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          AZURE_SEARCH_ENDPOINT: ${{ vars.AZURE_SEARCH_ENDPOINT }}
+
+      - name: Deploy new revision to Azure Container Apps
+        run: |
+          az containerapp update \
+            --name "${{ vars.CONTAINER_APP }}" \
+            --resource-group "${{ vars.RESOURCE_GROUP }}" \
+            --image "$IMAGE:${{ github.sha }}" \
+            --revision-suffix "${GITHUB_SHA::8}"
+
+      - name: Smoke test readiness
+        run: |
+          url="https://$(az containerapp show -n "${{ vars.CONTAINER_APP }}" -g "${{ vars.RESOURCE_GROUP }}" --query properties.configuration.ingress.fqdn -o tsv)"
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$url/api/v1/ready"; then exit 0; fi
+            sleep 10
+          done
+          echo "Readiness check failed; rolling back"
+          previous=$(az containerapp revision list -n "${{ vars.CONTAINER_APP }}" -g "${{ vars.RESOURCE_GROUP }}" --query "[?properties.active] | [-2].name" -o tsv)
+          az containerapp ingress traffic set -n "${{ vars.CONTAINER_APP }}" -g "${{ vars.RESOURCE_GROUP }}" --revision-weight "$previous=100"
+          exit 1

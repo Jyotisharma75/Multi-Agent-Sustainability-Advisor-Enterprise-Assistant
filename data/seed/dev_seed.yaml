@@ -1,0 +1,147 @@
+# Synthetic operating history for development and automated tests.
+# Not real company data. Every value used by the seeder lives here.
+start_month: 2023-01-01
+months: 30
+random_seed: 20240601
+data_source: erp_ghg_ledger
+methodology: ghg_protocol_location_based
+
+facilities:
+  - facility:
+      facility_id: FAC-001
+      name: Rotterdam Polymer Plant
+      region: EMEA
+      country: Netherlands
+      industry: chemicals
+      capacity: 150000
+      capacity_unit: t/yr
+      is_active: true
+    scope1_tco2e: 1850
+    scope3_tco2e: 640
+    electricity_mwh: 4300
+    gas_mwh: 6100
+    renewable_share: 0.18
+    renewable_share_growth_per_month: 0.004
+    grid_factor_tco2e_per_mwh: 0.33
+    production: 9800
+    production_unit: t
+    product: polyethylene
+    electricity_price: 118.0
+    gas_price: 46.0
+    currency: EUR
+    trend_per_month: 0.0015
+    seasonality: 0.07
+    noise: 0.025
+    anomalies:
+      - month_index: 27
+        metric: emissions
+        factor: 1.55
+    targets:
+      emissions_intensity_target: 0.36
+      energy_intensity_target: 0.95
+      renewable_share_target: 40.0
+      monthly_emissions_target_tco2e: 3300
+    target_units:
+      emissions_intensity_target: tCO2e/t
+      energy_intensity_target: MWh/t
+      renewable_share_target: "%"
+      monthly_emissions_target_tco2e: tCO2e
+    references:
+      heat_recovery_cost_reference:
+        value: 420000
+        unit: EUR
+        source: capex_register_2024
+    sensors:
+      - sensor_id: SEN-001-GAS
+        sensor_type: natural_gas_flow
+        unit: m3/h
+        location: Steam boiler house
+        base: 610
+        noise: 0.04
+        readings_per_month: 4
+
+  - facility:
+      facility_id: FAC-002
+      name: Monterrey Assembly Site
+      region: AMER
+      country: Mexico
+      industry: automotive_components
+      capacity: 2400000
+      capacity_unit: units/yr
+      is_active: true
+    scope1_tco2e: 520
+    scope3_tco2e: 910
+    electricity_mwh: 6900
+    gas_mwh: 1500
+    renewable_share: 0.31
+    renewable_share_growth_per_month: 0.002
+    grid_factor_tco2e_per_mwh: 0.43
+    production: 195000
+    production_unit: units
+    product: brake_assemblies
+    electricity_price: 92.0
+    gas_price: 31.0
+    currency: USD
+    trend_per_month: -0.001
+    seasonality: 0.05
+    noise: 0.02
+    anomalies:
+      - month_index: 24
+        metric: energy
+        factor: 1.4
+    targets:
+      emissions_intensity_target: 0.017
+      energy_intensity_target: 0.045
+      renewable_share_target: 50.0
+      monthly_emissions_target_tco2e: 3500
+    target_units:
+      emissions_intensity_target: tCO2e/unit
+      energy_intensity_target: MWh/unit
+      renewable_share_target: "%"
+      monthly_emissions_target_tco2e: tCO2e
+    references: {}
+    sensors:
+      - sensor_id: SEN-002-KWH
+        sensor_type: compressed_air_power
+        unit: kW
+        location: Compressor room
+        base: 380
+        noise: 0.03
+        readings_per_month: 4
+
+  - facility:
+      facility_id: FAC-003
+      name: Pune Packaging Facility
+      region: APAC
+      country: India
+      industry: packaging
+      capacity: 60000
+      capacity_unit: t/yr
+      is_active: true
+    scope1_tco2e: 410
+    scope3_tco2e: 280
+    electricity_mwh: 2100
+    gas_mwh: 900
+    renewable_share: 0.42
+    renewable_share_growth_per_month: 0.006
+    grid_factor_tco2e_per_mwh: 0.71
+    production: 4300
+    production_unit: t
+    product: corrugated_board
+    electricity_price: null
+    gas_price: null
+    currency: null
+    trend_per_month: -0.003
+    seasonality: 0.09
+    noise: 0.03
+    anomalies: []
+    targets:
+      emissions_intensity_target: 0.33
+      renewable_share_target: 60.0
+      monthly_emissions_target_tco2e: 1600
+    target_units:
+      emissions_intensity_target: tCO2e/t
+      renewable_share_target: "%"
+      monthly_emissions_target_tco2e: tCO2e
+    references: {}
+    sensors: []

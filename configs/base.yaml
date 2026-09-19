@@ -1,0 +1,651 @@
+# Base configuration shared by every environment. Environment overlays
+# (development.yaml, test.yaml, production.yaml) and SA_ variables override it.
+# Fields ending in _env name an environment variable; they never hold secrets.
+
+app:
+  name: sustainability-advisor
+  environment: base
+  version: 1.0.0
+
+api:
+  prefix: /api/v1
+  cors_origins: []
+  max_request_bytes: 65536
+  request_timeout_seconds: 180
+  analyze_intent: comprehensive_analysis
+  scenario_intent: scenario_analysis
+  auth:
+    enabled: true
+    header_name: X-API-Key
+    api_keys_env: SA_API_KEYS
+
+logging:
+  level: INFO
+  json_output: true
+  include_llm_payloads: false
+
+database:
+  backend: azure_sql
+  schema_name: dbo
+  query_timeout_seconds: 30
+  readiness_query: SELECT 1
+  azure_sql:
+    server_env: AZURE_SQL_SERVER
+    database_env: AZURE_SQL_DATABASE
+    driver: ODBC Driver 18 for SQL Server
+    auth_mode: entra
+    username_env: AZURE_SQL_USERNAME
+    password_env: AZURE_SQL_PASSWORD
+    token_scope: https://database.windows.net/.default
+    # User assigned managed identity (client id) for the read only query
+    # engine; when unset the application identity is used for both engines.
+    query_identity_client_id_env: AZURE_SQL_QUERY_IDENTITY_CLIENT_ID
+    encrypt: true
+    trust_server_certificate: false
+    connect_timeout_seconds: 30
+    pool_size: 10
+    max_overflow: 5
+    pool_recycle_seconds: 1800
+  sqlite:
+    path: var/sustainability.db
+    create_schema: true
+
+llm:
+  # Order in which agents try providers for reasoning and synthesis.
+  agent_provider_order: [azure_openai, local]
+  # Per prompt overrides. The local model is a small SQL coder: it is used for
+  # SQL generation and verification (routed by the SQL router) but not for
+  # intent classification or answer writing, where the deterministic keyword
+  # classifier and evidence composer are more reliable when Azure is down.
+  task_provider_order:
+    intent_classification: [azure_openai]
+    compliance_extraction: [azure_openai]
+    response_synthesis: [azure_openai]
+  json_repair_attempts: 1
+  azure_openai:
+    enabled: true
+    endpoint_env: AZURE_OPENAI_ENDPOINT
+    api_key_env: AZURE_OPENAI_API_KEY
+    auth_mode: entra
+    token_scope: https://cognitiveservices.azure.com/.default
+    api_version: "2024-10-21"
+    chat_deployment: gpt-4o
+    temperature: 0.0
+    max_tokens: 1500
+    timeout_seconds: 60
+    retry:
+      max_attempts: 3
+      initial_backoff_seconds: 1.0
+      max_backoff_seconds: 8.0
+  local:
+    enabled: true
+    model_id: Qwen/Qwen2.5-Coder-0.5B-Instruct
+    revision: main
+    device: cpu
+    dtype: float32
+    cache_dir: null
+    max_new_tokens: 384
+    temperature: 0.0
+    timeout_seconds: 120
+    max_concurrency: 1
+    num_threads: null
+    trust_remote_code: false
+    preload: false
+  mock:
+    enabled: false
+
+# Intelligent routing for SQL generation: simple questions go to the local
+# Hugging Face coder model, complex ones to Azure OpenAI; the other model
+# verifies when complexity or confidence calls for it.
+routing:
+  enabled: true
+  primary_when_simple: local
+  primary_when_complex: azure_openai
+  local_max_complexity: 0.4
+  always_verify_above_complexity: 0.65
+  verify_below_confidence: 0.8
+  disagreement_confidence_penalty: 0.7
+  max_repair_attempts: 1
+  table_count_saturation: 3
+  question_length_saturation: 40
+  time_expression_saturation: 2
+  aggregation_keywords: [total, sum, average, avg, mean, count, maximum, minimum, max, min, per, by, group]
+  comparison_keywords: [compare, versus, vs, difference, rank, top, bottom, highest, lowest, than]
+  time_keywords: [month, monthly, quarter, year, yearly, week, daily, since, between, trend, last, previous]
+  intent_complexity:
+    data_query: 0.3
+    kpi_analysis: 0.5
+    anomaly_investigation: 0.8
+    emissions_forecast: 0.6
+    scenario_analysis: 0.6
+    compliance_question: 0.4
+    document_question: 0.3
+    comprehensive_analysis: 0.8
+    default: 0.5
+  weights:
+    table_count: 0.3
+    question_length: 0.1
+    aggregation: 0.15
+    time_expressions: 0.15
+    comparison: 0.15
+    intent: 0.15
+
+sql:
+  generation_dialect: tsql
+  allowed_statements: [SELECT]
+  max_sql_chars: 4000
+  max_rows: 200
+  max_joins: 4
+  max_subquery_depth: 2
+  allow_select_star: false
+  allow_cross_database: false
+  allow_temp_tables: false
+  allow_variables: false
+  blocked_functions: [OPENROWSET, OPENQUERY, OPENDATASOURCE, OPENXML, BULK, XP_CMDSHELL, SP_EXECUTESQL, DBCC, HASHBYTES, WAITFOR, SUSER_SNAME, CURRENT_USER, SYSTEM_USER, USER_NAME]
+  blocked_keywords: [INSERT, UPDATE, DELETE, MERGE, DROP, ALTER, CREATE, TRUNCATE, EXEC, EXECUTE, GRANT, REVOKE, DENY, BACKUP, RESTORE, SHUTDOWN, WAITFOR, INTO, DECLARE, USE, KILL, RECONFIGURE, ATTACH, DETACH, PRAGMA]
+  blocked_identifier_prefixes: [XP_, SP_, SYS., FN_]
+  system_schemas: [sys, information_schema, sqlite_master, sqlite_schema, sqlite_temp_master, master, msdb, tempdb, model]
+  accepted_schema_qualifiers: [dbo]
+  dry_run_rows: 20
+  exposed_tables:
+    facilities:
+      description: Operating facilities.
+      columns: [facility_id, name, region, country, industry, capacity, capacity_unit, is_active]
+      synonyms: [facility, facilities, site, sites, plant, plants]
+    emissions:
+      description: Monthly greenhouse gas emissions by facility and GHG Protocol scope.
+      columns: [facility_id, period_start, period_end, scope, category, co2e_tonnes, source, methodology]
+      synonyms: [emission, emissions, co2, co2e, carbon, ghg, scope]
+    energy:
+      description: Monthly energy consumption by facility and energy type, with renewable share and cost.
+      columns: [facility_id, period_start, period_end, energy_type, consumption_mwh, renewable_mwh, cost, currency]
+      synonyms: [energy, electricity, gas, mwh, renewable, power]
+    production:
+      description: Monthly production output by facility.
+      columns: [facility_id, period_start, period_end, product, output_quantity, output_unit]
+      synonyms: [production, output, produced, volume]
+    sensors:
+      description: Sensors installed at facilities.
+      columns: [sensor_id, facility_id, sensor_type, unit, location]
+      synonyms: [sensor, sensors, meter, meters]
+    sensor_readings:
+      description: Time series readings from sensors.
+      columns: [sensor_id, recorded_at, value]
+      synonyms: [reading, readings, measurement, measurements]
+    sustainability_metrics:
+      description: Approved targets and reference values by facility. target_value holds targets; value holds reference figures.
+      columns: [facility_id, metric_name, period_start, period_end, value, unit, target_value, source]
+      synonyms: [target, targets, goal, goals, metric, metrics, kpi]
+    anomalies:
+      description: Anomalies detected by the analytics service.
+      columns: [anomaly_id, facility_id, metric, period_start, observed_value, expected_value, score, severity, method, detected_at, status]
+      synonyms: [anomaly, anomalies, outlier, outliers, spike, spikes]
+
+retrieval:
+  backend: azure_search
+  top_k: 6
+  candidate_multiplier: 3
+  rrf_k: 60
+  keyword_weight: 1.0
+  vector_weight: 1.0
+  min_retrieval_score: 0.35
+  bm25_k1: 1.2
+  bm25_b: 0.75
+  allowed_filter_fields: [doc_type, jurisdiction, facility_id, effective_date]
+  documents_path: data/documents
+  auto_ingest_on_start: false
+  azure_search:
+    endpoint_env: AZURE_SEARCH_ENDPOINT
+    api_key_env: AZURE_SEARCH_API_KEY
+    auth_mode: entra
+    index_name: sustainability-documents
+    content_field: content
+    vector_field: content_vector
+    key_field: chunk_id
+    use_semantic_ranker: true
+    semantic_configuration: sustainability-semantic
+    # Azure hybrid scores are RRF sums; this maps the best possible score to 1.
+    score_normalizer: 0.0333
+    reranker_score_normalizer: 4.0
+  embeddings:
+    provider: azure_openai
+    model: text-embedding-3-large
+    dimensions: 1536
+    batch_size: 16
+  chunking:
+    max_chars: 1200
+    overlap_chars: 150
+
+guardrails:
+  min_input_chars: 3
+  max_input_chars: 4000
+  identifier_pattern: "^[A-Za-z0-9][A-Za-z0-9_\\-]{0,63}$"
+  max_facility_ids: 20
+  injection_enabled: true
+  injection_block_threshold: 1.0
+  injection_patterns:
+    - {pattern: "ignore (all |any |the )?(previous|prior|above|earlier) (instructions|prompts|rules)", weight: 1.0}
+    - {pattern: "disregard (all |any |the )?(previous|prior|above|system) (instructions|prompts|rules)", weight: 1.0}
+    - {pattern: "forget (all |any |your )?(previous |prior )?(instructions|rules)", weight: 1.0}
+    - {pattern: "(reveal|show|print|repeat|output) (me )?(your|the) (system )?(prompt|instructions)", weight: 1.0}
+    - {pattern: "you are now (a|an|the) ", weight: 0.6}
+    - {pattern: "\\bact as (a|an) (different|new|unrestricted)", weight: 0.6}
+    - {pattern: "(developer|jailbreak|dan) mode", weight: 1.0}
+    - {pattern: "\\b(drop|truncate|delete from|alter) (table|database)\\b", weight: 0.6}
+    - {pattern: "\\bexec(ute)?\\s+(xp_|sp_)", weight: 1.0}
+    - {pattern: "<\\s*/?\\s*(system|assistant)\\s*>", weight: 0.6}
+    - {pattern: "new instructions\\s*:", weight: 0.6}
+    - {pattern: "override (the )?(safety|guardrails|policy|policies)", weight: 1.0}
+  min_final_confidence: 0.55
+  # Multiplier applied to final confidence when validation fails (for example
+  # a required agent failed or document findings lack citations).
+  validation_failure_penalty: 0.5
+  require_citations_for_documents: true
+  grounding_enabled: true
+  grounding_relative_tolerance: 0.01
+  grounding_ignore_below: 10
+  max_answer_chars: 6000
+  hidden_reasoning_tags: [think, thinking, reasoning, scratchpad]
+
+orchestration:
+  max_graph_iterations: 3
+  max_replans: 1
+  recursion_limit: 25
+  max_parallel_agents: 4
+  intent_min_confidence: 0.6
+  default_intent: kpi_analysis
+  default_lookback_months: 12
+  intents:
+    data_query:
+      description: A factual question answered by querying structured data (totals, lists, comparisons, lookups).
+      keywords: [how much, how many, list, show, which, what was, total, top, query, table]
+      agents: [sql_agent]
+    kpi_analysis:
+      description: Sustainability KPI performance, intensity, renewable share, progress against targets.
+      keywords: [kpi, intensity, target, performance, renewable share, progress, on track, energy analysis, emissions analysis]
+      agents: [data_analyst, sustainability_analyst, recommendation]
+    anomaly_investigation:
+      description: Investigating unusual spikes, drops or outliers in emissions, energy, production or sensors.
+      keywords: [anomaly, anomalies, spike, unusual, outlier, jump, drop, abnormal, investigate]
+      agents: [anomaly_detection, data_analyst, recommendation]
+    emissions_forecast:
+      description: Projecting future emissions and whether targets will be met.
+      keywords: [forecast, predict, projection, projected, next, future, will we, outlook]
+      agents: [forecasting, recommendation]
+    scenario_analysis:
+      description: What-if analysis of operational levers such as efficiency, renewable electricity or production changes.
+      keywords: [what if, what-if, scenario, if we, simulate, lever, suppose]
+      agents: [forecasting]
+    compliance_question:
+      description: Regulatory and disclosure obligations, permits and reporting requirements.
+      keywords: [compliance, regulation, regulatory, csrd, esrs, disclosure, permit, obligation, report, requirement, law, directive]
+      agents: [compliance_knowledge]
+    document_question:
+      description: Questions about internal policies, procedures, audits and plans held in documents.
+      keywords: [policy, procedure, document, audit, plan, guideline, standard, according to]
+      agents: [document_intelligence]
+    comprehensive_analysis:
+      description: A full review of a facility combining KPIs, trends, anomalies, forecast, recommendations and compliance context.
+      keywords: [full analysis, comprehensive, overall review, deep dive, assessment]
+      agents: [data_analyst, sustainability_analyst, anomaly_detection, forecasting, recommendation, compliance_knowledge]
+  agent_dependencies:
+    sustainability_analyst: [data_analyst]
+    recommendation: [data_analyst, sustainability_analyst, anomaly_detection, forecasting]
+
+agents:
+  orchestrator:
+    enabled: true
+    responsibility: Classify intent, resolve entities and plan agent execution.
+    allowed_tools: [facility_directory]
+    timeout_seconds: 60
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.5, max_backoff_seconds: 2.0}
+    max_iterations: 3
+    prompt: intent_classification
+    min_confidence: 0.0
+    required: true
+  sustainability_analyst:
+    enabled: true
+    responsibility: Judge KPI performance and trends against targets and prior periods.
+    allowed_tools: [sustainability_kpi_lookup]
+    timeout_seconds: 45
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.5, max_backoff_seconds: 2.0}
+    max_iterations: 3
+    prompt: null
+    min_confidence: 0.5
+    required: false
+  data_analyst:
+    enabled: true
+    responsibility: Compute sustainability KPIs and rank facilities.
+    allowed_tools: [sustainability_kpi_lookup, azure_sql_query]
+    timeout_seconds: 45
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.5, max_backoff_seconds: 2.0}
+    max_iterations: 3
+    prompt: null
+    min_confidence: 0.5
+    required: true
+  forecasting:
+    enabled: true
+    responsibility: Forecast emissions against targets and evaluate what-if scenarios.
+    allowed_tools: [emission_forecast, scenario_analysis]
+    timeout_seconds: 90
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.5, max_backoff_seconds: 2.0}
+    max_iterations: 20
+    prompt: null
+    min_confidence: 0.5
+    required: true
+  anomaly_detection:
+    enabled: true
+    responsibility: Detect and characterise anomalies in operational series.
+    allowed_tools: [anomaly_analysis]
+    timeout_seconds: 90
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.5, max_backoff_seconds: 2.0}
+    max_iterations: 60
+    prompt: null
+    min_confidence: 0.5
+    required: true
+  recommendation:
+    enabled: true
+    responsibility: Rank evidence based corrective actions.
+    allowed_tools: [recommendation_ranking]
+    timeout_seconds: 30
+    retry: {max_attempts: 1, initial_backoff_seconds: 0.0, max_backoff_seconds: 0.0}
+    max_iterations: 1
+    prompt: null
+    min_confidence: 0.3
+    required: false
+  document_intelligence:
+    enabled: true
+    responsibility: Retrieve cited passages from enterprise documents.
+    allowed_tools: [document_search, vector_search]
+    timeout_seconds: 45
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.5, max_backoff_seconds: 2.0}
+    max_iterations: 2
+    prompt: null
+    min_confidence: 0.35
+    required: true
+  sql_agent:
+    enabled: true
+    responsibility: Answer data questions with guarded, verified, read only SQL.
+    allowed_tools: [azure_sql_query]
+    timeout_seconds: 150
+    retry: {max_attempts: 1, initial_backoff_seconds: 0.0, max_backoff_seconds: 0.0}
+    max_iterations: 1
+    prompt: sql_generation
+    min_confidence: 0.5
+    required: true
+  compliance_knowledge:
+    enabled: true
+    responsibility: Extract cited regulatory obligations relevant to the question.
+    allowed_tools: [document_search, vector_search]
+    timeout_seconds: 90
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.5, max_backoff_seconds: 2.0}
+    max_iterations: 3
+    prompt: compliance_extraction
+    min_confidence: 0.35
+    required: true
+  response_synthesizer:
+    enabled: true
+    responsibility: Compose the grounded, cited final answer.
+    allowed_tools: []
+    timeout_seconds: 120
+    retry: {max_attempts: 1, initial_backoff_seconds: 0.0, max_backoff_seconds: 0.0}
+    max_iterations: 2
+    prompt: response_synthesis
+    min_confidence: 0.0
+    required: true
+
+tools:
+  facility_directory:
+    enabled: true
+    description: List facilities with the latest period that has data.
+    timeout_seconds: 10
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.2, max_backoff_seconds: 1.0}
+  azure_sql_query:
+    enabled: true
+    description: Answer a data question with routed, verified, read only SQL against Azure SQL.
+    timeout_seconds: 140
+    retry: {max_attempts: 1, initial_backoff_seconds: 0.0, max_backoff_seconds: 0.0}
+  sustainability_kpi_lookup:
+    enabled: true
+    description: Compute configured sustainability KPIs with targets for facilities and a period.
+    timeout_seconds: 20
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.2, max_backoff_seconds: 1.0}
+  document_search:
+    enabled: true
+    description: Hybrid keyword and vector search over enterprise documents with metadata filters.
+    timeout_seconds: 20
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.5, max_backoff_seconds: 2.0}
+  vector_search:
+    enabled: true
+    description: Vector similarity search over enterprise documents.
+    timeout_seconds: 20
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.5, max_backoff_seconds: 2.0}
+  anomaly_analysis:
+    enabled: true
+    description: Detect anomalies in emissions, energy, production or a sensor series.
+    timeout_seconds: 30
+    retry: {max_attempts: 2, initial_backoff_seconds: 0.2, max_backoff_seconds: 1.0}
+  emission_forecast:
+    enabled: true
+    description: Forecast monthly emissions with backtested method selection and intervals.
+    timeout_seconds: 60
+    retry: {max_attempts: 1, initial_backoff_seconds: 0.0, max_backoff_seconds: 0.0}
+  scenario_analysis:
+    enabled: true
+    description: Apply what-if levers to a facility's measured emissions baseline.
+    timeout_seconds: 20
+    retry: {max_attempts: 1, initial_backoff_seconds: 0.0, max_backoff_seconds: 0.0}
+  recommendation_ranking:
+    enabled: true
+    description: Rank evidence based corrective actions.
+    timeout_seconds: 20
+    retry: {max_attempts: 1, initial_backoff_seconds: 0.0, max_backoff_seconds: 0.0}
+
+kpis:
+  on_track_tolerance: 0.02
+  default_kpis: [emissions_intensity, energy_intensity, renewable_share, total_emissions]
+  definitions:
+    emissions_intensity:
+      description: Total emissions per unit of production.
+      kind: ratio
+      numerator: emissions.total
+      denominator: production.output_quantity
+      unit: tCO2e per unit of output
+      scale: 1.0
+      higher_is_better: false
+      target_metric: emissions_intensity_target
+      target_basis: absolute
+    energy_intensity:
+      description: Energy consumed per unit of production.
+      kind: ratio
+      numerator: energy.consumption_mwh
+      denominator: production.output_quantity
+      unit: MWh per unit of output
+      scale: 1.0
+      higher_is_better: false
+      target_metric: energy_intensity_target
+      target_basis: absolute
+    renewable_share:
+      description: Share of energy from renewable sources.
+      kind: ratio
+      numerator: energy.renewable_mwh
+      denominator: energy.consumption_mwh
+      unit: "%"
+      scale: 100.0
+      higher_is_better: true
+      target_metric: renewable_share_target
+      target_basis: absolute
+    total_emissions:
+      description: Total scope 1, 2 and 3 emissions.
+      kind: sum
+      numerator: emissions.total
+      denominator: null
+      unit: tCO2e
+      scale: 1.0
+      higher_is_better: false
+      target_metric: monthly_emissions_target_tco2e
+      target_basis: per_month
+    scope1_emissions:
+      description: Direct scope 1 emissions.
+      kind: sum
+      numerator: emissions.scope1
+      denominator: null
+      unit: tCO2e
+      scale: 1.0
+      higher_is_better: false
+      target_metric: null
+      target_basis: absolute
+    scope2_emissions:
+      description: Indirect scope 2 emissions from purchased energy.
+      kind: sum
+      numerator: emissions.scope2
+      denominator: null
+      unit: tCO2e
+      scale: 1.0
+      higher_is_better: false
+      target_metric: null
+      target_basis: absolute
+    energy_cost:
+      description: Reported energy cost; unknown when any invoice lacks a cost.
+      kind: sum
+      numerator: energy.cost
+      denominator: null
+      unit: reported currency
+      scale: 1.0
+      higher_is_better: false
+      target_metric: null
+      target_basis: absolute
+
+forecasting:
+  default_horizon: 6
+  max_horizon: 24
+  seasonal_period: 12
+  min_history_points: 12
+  holdout_points: 6
+  interval_coverage: 0.9
+  methods: [holt_winters, seasonal_naive, drift]
+  history_months: 36
+  target_metric: monthly_emissions_target_tco2e
+  target_basis: per_month
+
+anomaly:
+  robust_z_threshold: 3.5
+  rolling_window: 12
+  min_points: 6
+  isolation_forest_enabled: true
+  isolation_forest_contamination: 0.05
+  isolation_forest_min_points: 18
+  random_state: 7
+  history_months: 24
+  default_metrics: [emissions, energy]
+  metric_units:
+    emissions: tCO2e
+    energy: MWh
+    production: units of output
+    sensor: sensor units
+  severity_bands:
+    - {name: critical, min_score: 8.0}
+    - {name: high, min_score: 5.0}
+    - {name: medium, min_score: 3.5}
+    - {name: low, min_score: 0.0}
+
+scenario:
+  baseline_months: 12
+  levers:
+    energy_efficiency_pct:
+      kind: energy_reduction
+      description: Reduce energy consumption through efficiency measures.
+      unit: "%"
+      min_value: 0
+      max_value: 50
+      scopes: [1, 2]
+    renewable_electricity_pct:
+      kind: renewable_share
+      description: Raise the renewable share of electricity to the given percentage.
+      unit: "%"
+      min_value: 0
+      max_value: 100
+      scopes: [2]
+    production_change_pct:
+      kind: production_change
+      description: Change production volume by the given percentage.
+      unit: "%"
+      min_value: -50
+      max_value: 50
+      scopes: [1, 2, 3]
+
+recommendations:
+  max_recommendations: 8
+  min_evidence_items: 1
+  severity_thresholds: {critical: 0.25, high: 0.1, medium: 0.03}
+  severity_scores: {critical: 1.0, high: 0.75, medium: 0.5, low: 0.25}
+  complexity_scores: {low: 0.2, medium: 0.5, high: 0.8}
+  priority_weights: {severity: 0.45, confidence: 0.25, ease: 0.15, evidence: 0.15}
+  priority_bands:
+    - {name: P1, min_score: 0.7}
+    - {name: P2, min_score: 0.5}
+    - {name: P3, min_score: 0.0}
+  playbooks:
+    kpi_off_target.emissions_intensity:
+      issue_template: "Emissions intensity at $facility is $magnitude_pct% worse than target."
+      business_impact_template: "Continued gap to the intensity target at $facility risks missing disclosed decarbonisation commitments and increases exposure to carbon pricing."
+      estimated_complexity: high
+      actions:
+        - Break down scope 1 combustion by process unit and identify the largest contributors.
+        - Commission a heat recovery and electrification feasibility study for the largest thermal loads.
+        - Set monthly intensity tracking with named process owners.
+      cost_reference_metric: heat_recovery_cost_reference
+    kpi_off_target.energy_intensity:
+      issue_template: "Energy intensity at $facility is $magnitude_pct% worse than target."
+      business_impact_template: "Higher energy use per unit at $facility raises operating cost and scope 1 and 2 emissions."
+      estimated_complexity: medium
+      actions:
+        - Run an ISO 50001 style energy review of significant energy uses.
+        - Prioritise compressed air, steam and motor system efficiency measures.
+        - Install sub metering on the three largest consumers.
+      cost_reference_metric: null
+    kpi_off_target.renewable_share:
+      issue_template: "Renewable energy share at $facility is $magnitude_pct% below target."
+      business_impact_template: "A low renewable share keeps scope 2 emissions at $facility tied to grid intensity."
+      estimated_complexity: medium
+      actions:
+        - Assess on site solar potential and power purchase agreement options.
+        - Evaluate energy attribute certificates as an interim measure, disclosed separately.
+      cost_reference_metric: null
+    kpi_off_target:
+      issue_template: "$subject at $facility is $magnitude_pct% off target."
+      business_impact_template: "The gap in $subject at $facility affects progress on sustainability targets."
+      estimated_complexity: medium
+      actions:
+        - Assign an owner to investigate the drivers of the gap.
+        - Define corrective actions with milestones and track them monthly.
+      cost_reference_metric: null
+    anomaly:
+      issue_template: "Unexplained $severity severity anomaly in $subject at $facility."
+      business_impact_template: "Unexplained deviations in $subject at $facility may indicate equipment faults, process upsets or data quality issues that distort reporting."
+      estimated_complexity: low
+      actions:
+        - Verify the source data for the anomalous period with the site data owner.
+        - Check maintenance and operations logs for the period for equipment or process events.
+        - If confirmed, document root cause and corrective action; if a data error, correct and restate.
+      cost_reference_metric: null
+    forecast_exceeds_target:
+      issue_template: "Emissions at $facility are projected to exceed target by $magnitude_pct% over the forecast horizon."
+      business_impact_template: "Without intervention $facility is likely to miss its emissions target for the period."
+      estimated_complexity: high
+      actions:
+        - Review the pipeline of approved abatement projects and accelerate those that deliver within the horizon.
+        - Model levers with the scenario endpoint to size the reduction needed.
+        - Escalate the projected gap to the sustainability steering committee.
+      cost_reference_metric: null
+
+conversation:
+  max_history_turns: 5
+  max_message_chars: 20000
+
+prompts:
+  directory: prompts
+  version: v1
+
+compliance:
+  document_types: [regulation, disclosure_standard, permit]

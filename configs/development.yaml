@@ -1,0 +1,39 @@
+# Local development: SQLite database, in process hybrid index with a local
+# sentence-transformers embedding model, local Hugging Face coder model for
+# SQL. Azure OpenAI is used when AZURE_OPENAI_ENDPOINT is set, otherwise the
+# local model and deterministic fallbacks carry every step.
+app:
+  environment: development
+
+api:
+  cors_origins: ["http://localhost:3000"]
+  auth:
+    enabled: false
+
+logging:
+  level: INFO
+  json_output: false
+
+database:
+  backend: sqlite
+  schema_name: null
+  sqlite:
+    path: var/sustainability.db
+    create_schema: true
+
+llm:
+  azure_openai:
+    auth_mode: api_key
+
+sql:
+  accepted_schema_qualifiers: [dbo]
+
+retrieval:
+  backend: memory
+  auto_ingest_on_start: true
+  min_retrieval_score: 0.3
+  embeddings:
+    provider: sentence_transformers
+    model: sentence-transformers/all-MiniLM-L6-v2
+    dimensions: 384
+    batch_size: 32
